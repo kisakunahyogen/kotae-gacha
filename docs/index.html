@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>答えガチャ</title>
+<meta name="description" content="ニュースから拾った難しめの言葉を10個ずつ引ける、クイズの答え探し用ツール">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#DDE5EE; --ink:#13213B; --muted:#56637C; --paper:#FFFFFF; --line:#C3CEDB;
+  --machine:#2550A8; --machine-deep:#183A7E; --glass:#EEF4FB;
+  --l1:#2FAE86; --l2:#E0A019; --l3:#D9475C; --l4:#7A5CCB; --c-art:#D9475C; --c-his:#E0A019;
+  --focus:#F2B705;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1724; --ink:#E5ECF6; --muted:#9AA8BF; --paper:#1A2537; --line:#2C3A52;
+    --machine:#3567CC; --machine-deep:#244A99; --glass:#22314A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1724; --ink:#E5ECF6; --muted:#9AA8BF; --paper:#1A2537; --line:#2C3A52;
+  --machine:#3567CC; --machine-deep:#244A99; --glass:#22314A; color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans","Meiryo",sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+
+.wrap{max-width:1120px;margin:0 auto;padding:28px 20px 48px;display:grid;grid-template-columns:340px 1fr;gap:36px;align-items:start}
+@media (max-width:860px){.wrap{grid-template-columns:1fr;gap:24px}}
+
+/* left: the machine */
+.side{position:sticky;top:calc(16px + env(safe-area-inset-top,0px))}
+@media (max-width:860px){.side{position:static}}
+h1{font-weight:900;font-size:2.4rem;line-height:1.1;margin:0 0 4px;letter-spacing:.02em}
+.lede{margin:0 0 20px;color:var(--muted);font-size:.95rem}
+
+.machine{background:var(--machine);border-radius:28px 28px 18px 18px;padding:18px 18px 22px;position:relative;box-shadow:inset 0 -10px 0 var(--machine-deep)}
+.dome{background:var(--glass);border-radius:50% 50% 14px 14px / 60% 60% 14px 14px;height:150px;position:relative;overflow:hidden;border:4px solid rgba(255,255,255,.35)}
+.dome svg{position:absolute;inset:0;width:100%;height:100%}
+.panel{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:16px;color:#fff}
+.slot{width:74px;height:46px;background:var(--machine-deep);border-radius:10px 10px 22px 22px;box-shadow:inset 0 6px 0 rgba(0,0,0,.25)}
+.turn{display:flex;align-items:center;gap:12px;background:none;border:0;cursor:pointer;padding:0;color:#fff}
+.knob{width:84px;height:84px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:0 5px 0 var(--machine-deep);transition:transform .7s cubic-bezier(.5,-0.3,.4,1.3)}
+.knob::before{content:"";width:62px;height:16px;border-radius:8px;background:var(--c-art)}
+.turn:active .knob{box-shadow:0 2px 0 var(--machine-deep);translate:0 3px}
+.turn-label{font-weight:900;font-size:1.25rem;line-height:1.2;text-align:left}
+.turn-label small{display:block;font-weight:500;font-size:.78rem;opacity:.85}
+.turn[disabled]{cursor:progress;opacity:.75}
+
+.group{margin-top:20px}
+.group h2{font-size:.9rem;font-weight:700;margin:0 0 8px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:2px solid var(--line);background:var(--paper);border-radius:999px;padding:4px 12px;font-size:.88rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip .dot{width:10px;height:10px;border-radius:50%}
+.chip[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--bg)}
+.note{font-size:.8rem;color:var(--muted);margin:8px 0 0;line-height:1.6}
+
+/* right: tray + detail */
+.tray-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px;min-height:1.7em}
+.tray-head p{margin:0;color:var(--muted);font-size:.9rem}
+.tray{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;min-height:120px}
+.empty{grid-column:1/-1;border:2px dashed var(--line);border-radius:18px;padding:32px 20px;text-align:center;color:var(--muted)}
+.cap{display:flex;align-items:stretch;border:0;padding:0;background:var(--paper);border-radius:999px;cursor:pointer;text-align:left;min-height:56px;box-shadow:0 2px 0 var(--line);overflow:hidden;transition:transform .15s}
+.cap:hover{transform:translateY(-2px)}
+.cap .half{flex:0 0 52px;display:grid;place-items:center;color:#fff;font-weight:900;font-size:1rem;border-right:2px solid rgba(0,0,0,.08)}
+.cap .w{padding:6px 18px 6px 12px;align-self:center;font-weight:700;font-size:1rem;line-height:1.35;word-break:break-word}
+.cap.seen .w{color:var(--muted)}
+.cap[aria-expanded="true"]{box-shadow:0 0 0 3px var(--ink)}
+.cap.drop{animation:drop .45s cubic-bezier(.3,1.4,.5,1) both}
+@keyframes drop{from{opacity:0;transform:translateY(-28px) scale(.9)}to{opacity:1;transform:none}}
+
+.detail{margin-top:20px;background:var(--paper);border-radius:22px;padding:24px 26px;border:2px solid var(--line);min-height:160px}
+.detail[hidden]{display:none}
+.detail .meta{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);font-weight:700}
+.detail .meta .dot{width:12px;height:12px;border-radius:50%}
+.word{font-family:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif;font-weight:800;font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.25;margin:6px 0 0;word-break:break-word}
+.reading{color:var(--muted);margin:2px 0 14px;font-size:.95rem}
+.meaning{font-family:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif;font-weight:600;font-size:1.08rem;line-height:1.9;margin:0;max-width:40em}
+.warn{font-size:.82rem;color:var(--muted);margin:10px 0 0}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.links a,.keep-btn{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:7px 16px;font-weight:700;font-size:.9rem;text-decoration:none;border:2px solid var(--ink);color:var(--ink);background:transparent;cursor:pointer}
+.links a.primary{background:var(--ink);color:var(--bg)}
+.keep-btn[aria-pressed="true"]{background:var(--c-his);border-color:var(--c-his);color:#1b1300}
+
+.kept{margin-top:28px}
+.kept-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.kept h2{font-size:1.05rem;margin:0}
+.small-btn{border:2px solid var(--line);background:var(--paper);border-radius:999px;padding:3px 12px;font-size:.82rem;font-weight:700;cursor:pointer}
+.kept ul{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-wrap:wrap;gap:6px}
+.kept li button{border:0;background:var(--paper);border-radius:10px;padding:5px 10px;font-weight:700;font-size:.9rem;cursor:pointer;border-left:6px solid var(--c)}
+.kept .none{color:var(--muted);font-size:.9rem;margin:8px 0 0}
+
+.status{font-size:.9rem;color:var(--muted)}
+.status.err{color:var(--c-art)}
+
+@media (prefers-reduced-motion: reduce){
+  .knob{transition:none}
+  .cap.drop{animation:none}
+  .cap{transition:none}
+}
+
+.src-card{margin-top:18px;border-top:2px dashed var(--line);padding-top:14px}
+.src-card h3{font-size:.85rem;color:var(--muted);margin:0 0 6px;font-weight:700}
+.src-card a.article{color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
+.src-card .when{display:block;font-size:.8rem;color:var(--muted)}
+.attrib{font-size:.78rem;color:var(--muted);margin:8px 0 0}
+.attrib a{color:inherit}
+.stars{letter-spacing:.1em}
+select.sel{font:inherit;font-weight:700;font-size:.88rem;border:2px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:4px 12px}
+.foot{margin-top:40px;padding-top:16px;border-top:2px solid var(--line);font-size:.8rem;color:var(--muted);max-width:44em}
+.foot p{margin:0 0 6px}
+.foot a{color:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="side">
+    <h1>答えガチャ</h1>
+    <p class="lede">ニュースに出てきた言葉から、クイズの答えになりそうなものを10個ずつ。</p>
+
+    <div class="machine">
+      <div class="dome" aria-hidden="true">
+        <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMax slice"><g id="balls"></g></svg>
+      </div>
+      <div class="panel">
+        <div class="slot" aria-hidden="true"></div>
+        <button class="turn" id="turn" type="button" disabled>
+          <span class="knob" id="knob" aria-hidden="true"></span>
+          <span class="turn-label">回す<small id="turnSub">準備中…</small></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2 id="g-level">難しさ</h2>
+      <div class="chips" id="levels" role="group" aria-labelledby="g-level"></div>
+      <p class="note">Wikipediaで読まれている回数が少ない言葉ほど「難」寄りになります。</p>
+    </div>
+
+    <div class="group">
+      <h2 id="g-time">いつのニュースから</h2>
+      <div class="chips" id="times" role="group" aria-labelledby="g-time"></div>
+    </div>
+
+    <div class="group">
+      <h2><label for="site">サイト</label></h2>
+      <select id="site" class="sel"><option value="">すべて</option></select>
+      <p class="note" id="meta"></p>
+    </div>
+  </aside>
+
+  <main>
+    <div class="tray-head">
+      <p id="status" class="status" role="status" aria-live="polite">言葉を読み込んでいます…</p>
+    </div>
+    <div class="tray" id="tray">
+      <div class="empty">左の「回す」を押すと、ここに10個のカプセルが出てきます。</div>
+    </div>
+
+    <section class="detail" id="detail" hidden aria-live="polite"></section>
+
+    <section class="kept">
+      <div class="kept-head">
+        <h2>キープした言葉</h2>
+        <div>
+          <button class="small-btn" type="button" id="copyKept">コピー</button>
+          <button class="small-btn" type="button" id="clearKept">全部外す</button>
+        </div>
+      </div>
+      <ul id="keptList"></ul>
+      <p class="none" id="keptNone">気になる言葉は詳細から「キープ」すると、このブラウザに残ります。</p>
+    </section>
+
+    <footer class="foot">
+      <p>言葉の説明は<a href="https://ja.wikipedia.org/" target="_blank" rel="noopener noreferrer">ウィキペディア日本語版</a>の記事冒頭を自動で抜き出したもので、<a href="https://creativecommons.org/licenses/by-sa/4.0/deed.ja" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a> に従います。各言葉の詳細に元の記事へのリンクがあります。</p>
+      <p>ニュースの見出しとリンク先の記事の著作権は、各報道機関に帰属します。このサイトは見出しから言葉を拾うだけで、記事本文は保存していません。</p>
+      <p>キープした言葉はお使いのブラウザの中だけに保存され、外部には送信されません。</p>
+    </footer>
+  </main>
+</div>
+
+<script>
+const LEVELS = {
+  1:{name:"易", label:"やさしい", color:"var(--l1)"},
+  2:{name:"中", label:"ふつう",   color:"var(--l2)"},
+  3:{name:"難", label:"難しい",   color:"var(--l3)"},
+  4:{name:"極", label:"激ムズ",   color:"var(--l4)"}
+};
+const TIMES = [["1","24時間"],["7","1週間"],["0","すべて"]];
+
+const $ = s => document.querySelector(s);
+const tray=$("#tray"), detail=$("#detail"), statusEl=$("#status"), turnBtn=$("#turn");
+const state = { all:[], levels:new Set([2,3,4]), days:"7", site:"", current:[], openIdx:-1, drawn:new Set(), spins:0 };
+
+function lsGet(k,f){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } }
+function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+let kept = lsGet("kotae-gacha-kept", []);
+
+function safeUrl(u, hosts){
+  try{ const x=new URL(u); if(x.protocol!=="https:"&&x.protocol!=="http:") return null;
+       if(hosts && !hosts.some(h=>x.hostname===h||x.hostname.endsWith("."+h))) return null; return x.href; }catch(e){ return null; }
+}
+const fmtDate = iso => { const d=new Date(iso); return isNaN(d)?"":d.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}); };
+
+/* ---------- filters ---------- */
+function renderChips(){
+  const lv=$("#levels"); lv.innerHTML="";
+  for(const [k,v] of Object.entries(LEVELS)){
+    const b=document.createElement("button"); b.type="button"; b.className="chip";
+    b.setAttribute("aria-pressed", String(state.levels.has(+k)));
+    const d=document.createElement("span"); d.className="dot"; d.style.background=v.color;
+    b.append(d, `${v.name}・${v.label}`);
+    b.onclick=()=>{ const n=+k; if(state.levels.has(n)){ if(state.levels.size>1) state.levels.delete(n);} else state.levels.add(n); state.drawn.clear(); renderChips(); updateCount(); };
+    lv.append(b);
+  }
+  const tm=$("#times"); tm.innerHTML="";
+  for(const [k,label] of TIMES){
+    const b=document.createElement("button"); b.type="button"; b.className="chip";
+    b.setAttribute("aria-pressed", String(state.days===k)); b.textContent=label;
+    b.onclick=()=>{ state.days=k; state.drawn.clear(); renderChips(); updateCount(); };
+    tm.append(b);
+  }
+}
+$("#site").onchange = e => { state.site=e.target.value; state.drawn.clear(); updateCount(); };
+
+function pool(){
+  const now=Date.now(), lim = +state.days ? +state.days*86400000 : Infinity;
+  return state.all.filter(w=>{
+    const s=w.sources?.[0]; const t=new Date(s?.date||w.addedAt).getTime();
+    return state.levels.has(w.level) && (now-t)<=lim && (!state.site || w.sources?.some(x=>x.site===state.site));
+  });
+}
+function updateCount(){
+  const n=pool().length;
+  $("#turnSub").textContent = n ? `${n}語の中から10個` : "該当なし";
+  turnBtn.disabled = n===0;
+  if(n===0) statusEl.textContent="この条件に合う言葉がありません。難しさや期間を広げてください。";
+}
+
+/* ---------- dome ---------- */
+function renderBalls(){
+  const g=$("#balls"), cols=["--l1","--l2","--l3","--l4"]; let s="", seed=state.spins*7+3;
+  const rnd=()=>{ seed=(seed*9301+49297)%233280; return seed/233280; };
+  for(let row=0;row<3;row++) for(let i=0;i<9;i++){
+    const x=18+i*33+(row%2)*16+(rnd()*6-3), y=132-row*30+(rnd()*6-3), c=`var(${cols[Math.floor(rnd()*4)]})`;
+    s+=`<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${Math.floor(rnd()*360)})"><circle r="15" fill="#fff" opacity=".9"/><path d="M-15 0a15 15 0 0 1 30 0z" fill="${c}"/></g>`;
+  }
+  g.innerHTML=s;
+}
+
+/* ---------- spin ---------- */
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+let knobTurns=0;
+function spin(){
+  knobTurns++; $("#knob").style.transform=`rotate(${knobTurns*360}deg)`;
+  state.spins++; renderBalls();
+  const p=pool();
+  let fresh=p.filter(w=>!state.drawn.has(w.word)), note="";
+  if(fresh.length<10){ state.drawn.clear(); fresh=p.slice(); note="条件内の言葉を一巡したので、混ぜ直しました。"; }
+  const out=shuffle(fresh).slice(0,10);
+  out.forEach(w=>state.drawn.add(w.word));
+  state.current=out; state.openIdx=-1; detail.hidden=true;
+  renderTray(true);
+  statusEl.classList.remove("err");
+  statusEl.textContent=`${out.length}個出ました。${note} カプセルを押すと意味と出典が見られます。`;
+}
+turnBtn.onclick=spin;
+
+function renderTray(animate){
+  tray.innerHTML="";
+  state.current.forEach((w,i)=>{
+    const b=document.createElement("button"); b.type="button"; b.className="cap"+(animate?" drop":"");
+    if(animate) b.style.animationDelay=(i*55)+"ms";
+    b.setAttribute("aria-expanded", String(state.openIdx===i)); b.setAttribute("aria-controls","detail");
+    const L=LEVELS[w.level]||LEVELS[3];
+    const h=document.createElement("span"); h.className="half"; h.style.background=L.color; h.textContent=L.name; h.setAttribute("aria-hidden","true");
+    const t=document.createElement("span"); t.className="w"; t.textContent=w.word;
+    b.append(h,t); b.onclick=()=>openWord(i,b); tray.append(b);
+  });
+}
+function openWord(i,btn){
+  state.openIdx=i;
+  tray.querySelectorAll(".cap").forEach((c,j)=>c.setAttribute("aria-expanded",String(j===i)));
+  btn.classList.add("seen");
+  renderDetail(state.current[i]);
+  if(matchMedia("(max-width:860px)").matches) detail.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"nearest"});
+}
+
+/* ---------- detail ---------- */
+const isKept = w => kept.some(k=>k.word===w.word);
+function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+function renderDetail(w){
+  detail.hidden=false; detail.innerHTML="";
+  const L=LEVELS[w.level]||LEVELS[3];
+  const meta=el("div","meta"); const dot=el("span","dot"); dot.style.background=L.color;
+  meta.append(dot, `${L.label}（Wikipedia 1日あたり約${(w.views??0).toLocaleString()}回閲覧）`);
+  const h=el("h2","word",w.word);
+  const r=el("p","reading", w.reading ? `${w.reading}（読みは自動推定）` : "\u00a0");
+  const m=el("p","meaning", w.meaning || "（説明がありません）");
+  const at=el("p","attrib"); at.append("説明文の出典：");
+  const wl=safeUrl(w.wiki,["ja.wikipedia.org"]);
+  if(wl){ const a=el("a",null,"ウィキペディア"); a.href=wl; a.target="_blank"; a.rel="noopener noreferrer"; at.append(a); } else at.append("ウィキペディア");
+  at.append("（CC BY-SA 4.0）。冒頭部分を自動で抜き出しています。");
+  detail.append(meta,h,r,m,at);
+
+  const s=(w.sources||[])[0];
+  const su = s && safeUrl(s.url);
+  if(su){
+    const box=el("div","src-card");
+    box.append(el("h3",null,`この言葉を拾った記事（${s.site}${s.label?"・"+s.label:""}）`));
+    const a=el("a","article",s.title||su); a.href=su; a.target="_blank"; a.rel="noopener noreferrer";
+    box.append(a, el("span","when",fmtDate(s.date)));
+    detail.append(box);
+  }
+  const links=el("div","links");
+  if(wl){ const a=el("a","primary","Wikipediaで読む"); a.href=wl; a.target="_blank"; a.rel="noopener noreferrer"; links.append(a); }
+  const kb=el("a",null,"コトバンクで調べる"); kb.href="https://kotobank.jp/search?q="+encodeURIComponent(w.word); kb.target="_blank"; kb.rel="noopener noreferrer"; links.append(kb);
+  const k=el("button","keep-btn"); k.type="button";
+  const sync=()=>{ const on=isKept(w); k.setAttribute("aria-pressed",String(on)); k.textContent=on?"キープ中":"キープする"; };
+  k.onclick=()=>{ if(isKept(w)) kept=kept.filter(x=>x.word!==w.word); else kept.push(w); lsSet("kotae-gacha-kept",kept); sync(); renderKept(); };
+  sync(); links.append(k); detail.append(links);
+}
+
+/* ---------- kept ---------- */
+function renderKept(){
+  const ul=$("#keptList"); ul.innerHTML="";
+  $("#keptNone").hidden = kept.length>0;
+  $("#copyKept").hidden = $("#clearKept").hidden = kept.length===0;
+  kept.forEach(w=>{
+    const li=document.createElement("li"), b=el("button",null,w.word); b.type="button";
+    b.style.setProperty("--c",(LEVELS[w.level]||LEVELS[3]).color);
+    b.onclick=()=>{ state.openIdx=-1; tray.querySelectorAll(".cap").forEach(c=>c.setAttribute("aria-expanded","false")); renderDetail(w); detail.scrollIntoView({block:"nearest"}); };
+    li.append(b); ul.append(li);
+  });
+}
+$("#copyKept").onclick=async()=>{
+  const text=kept.map(w=>`${w.word}${w.reading?`（${w.reading}）`:""}\t${w.meaning}\t${w.wiki||""}`).join("\n");
+  try{ await navigator.clipboard.writeText(text); $("#copyKept").textContent="コピーしました"; }catch(e){ $("#copyKept").textContent="コピーできませんでした"; }
+  setTimeout(()=>$("#copyKept").textContent="コピー",1600);
+};
+$("#clearKept").onclick=()=>{ kept=[]; lsSet("kotae-gacha-kept",kept); renderKept(); if(state.openIdx>=0) renderDetail(state.current[state.openIdx]); };
+
+/* ---------- load ---------- */
+async function load(){
+  try{
+    const res=await fetch("words.json?t="+Math.floor(Date.now()/600000), {cache:"no-cache"});
+    if(!res.ok) throw new Error(res.status);
+    const data=await res.json();
+    state.all=(data.words||[]).filter(w=>w&&w.word);
+    const sel=$("#site");
+    for(const s of (data.feeds||[...new Set(state.all.flatMap(w=>(w.sources||[]).map(x=>x.site)))])){ const o=document.createElement("option"); o.value=s; o.textContent=s; sel.append(o); }
+    $("#meta").textContent = data.updatedAt ? `最終更新 ${fmtDate(data.updatedAt)}・収録${state.all.length}語。1時間ごとに自動で拾い直します。` : "";
+    statusEl.textContent = state.all.length ? "準備ができました。「回す」を押してください。" : "まだ言葉がありません。クローラーが初回実行されるまでお待ちください。";
+    updateCount();
+  }catch(e){
+    statusEl.classList.add("err");
+    statusEl.textContent="言葉のデータ（words.json）を読み込めませんでした。ページを再読み込みしてください。";
+  }
+}
+renderChips(); renderBalls(); renderKept(); load();
+</script>
+</body>
+</html>

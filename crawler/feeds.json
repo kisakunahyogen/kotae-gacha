@@ -1,0 +1,74 @@
+{
+  "_note": "巡回するRSSの許可リストです。allowedHosts に含まれるドメインの記事だけをリンクとして採用し、それ以外は捨てます。robots.txt で取得が禁止されているフィードは自動で読み飛ばします。サイトを追加するときは、そのサイトの利用規約でRSSの自動取得が認められているかも確認してください。",
+  "feeds": [
+    {
+      "site": "NHKニュース",
+      "label": "主要",
+      "url": "https://www.nhk.or.jp/rss/news/cat0.xml",
+      "allowedHosts": [
+        "nhk.or.jp",
+        "news.web.nhk"
+      ]
+    },
+    {
+      "site": "NHKニュース",
+      "label": "科学・医療",
+      "url": "https://www.nhk.or.jp/rss/news/cat3.xml",
+      "allowedHosts": [
+        "nhk.or.jp",
+        "news.web.nhk"
+      ]
+    },
+    {
+      "site": "NHKニュース",
+      "label": "文化・エンタメ",
+      "url": "https://www.nhk.or.jp/rss/news/cat2.xml",
+      "allowedHosts": [
+        "nhk.or.jp",
+        "news.web.nhk"
+      ]
+    },
+    {
+      "site": "NHKニュース",
+      "label": "経済",
+      "url": "https://www.nhk.or.jp/rss/news/cat5.xml",
+      "allowedHosts": [
+        "nhk.or.jp",
+        "news.web.nhk"
+      ]
+    },
+    {
+      "site": "NHKニュース",
+      "label": "国際",
+      "url": "https://www.nhk.or.jp/rss/news/cat6.xml",
+      "allowedHosts": [
+        "nhk.or.jp",
+        "news.web.nhk"
+      ]
+    },
+    {
+      "site": "Yahoo!ニュース",
+      "label": "科学",
+      "url": "https://news.yahoo.co.jp/rss/topics/science.xml",
+      "allowedHosts": [
+        "news.yahoo.co.jp"
+      ]
+    },
+    {
+      "site": "Yahoo!ニュース",
+      "label": "国際",
+      "url": "https://news.yahoo.co.jp/rss/topics/world.xml",
+      "allowedHosts": [
+        "news.yahoo.co.jp"
+      ]
+    },
+    {
+      "site": "Yahoo!ニュース",
+      "label": "IT",
+      "url": "https://news.yahoo.co.jp/rss/topics/it.xml",
+      "allowedHosts": [
+        "news.yahoo.co.jp"
+      ]
+    }
+  ]
+}
