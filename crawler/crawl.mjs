@@ -128,6 +128,83 @@ async function fetchFeeds(cfg) {
   return articles;
 }
 
+// ---------- 1b. Wikipedia から言葉を拾う ----------
+// Wikimedia が公開している API（公式に認められた取得方法）だけを使います。
+const WIKI_API = "https://ja.wikipedia.org/w/api.php";
+const wikiArticleUrl = t => "https://ja.wikipedia.org/wiki/" + encodeURIComponent(t.replace(/ /g, "_"));
+async function wikiApi(params) {
+  const q = new URLSearchParams({ format: "json", formatversion: "2", ...params });
+  return get(WIKI_API + "?" + q, { json: true });
+}
+function pick(arr, n) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); }
+
+async function categoryTitles(cat) {
+  // 記事本体（名前空間0）を取り、無ければノートページ（名前空間1）から記事名を取り出す
+  const out = [];
+  for (const ns of ["0", "1"]) {
+    let cont = {};
+    for (let page = 0; page < 10; page++) {
+      const d = await wikiApi({ action: "query", list: "categorymembers", cmtitle: cat, cmnamespace: ns, cmlimit: "500", cmtype: "page", ...cont });
+      for (const m of d.query?.categorymembers ?? []) out.push(ns === "1" ? m.title.replace(/^ノート:/, "") : m.title);
+      if (!d.continue) break;
+      cont = { cmcontinue: d.continue.cmcontinue };
+      await sleep(300);
+    }
+    if (out.length) break;
+  }
+  return out;
+}
+
+async function fetchWikipedia(wcfg, cache) {
+  const items = []; // {word, reading, article}
+  if (!wcfg || wcfg.enabled === false) return items;
+  const nowIso = new Date().toISOString();
+
+  // (1) 良質な記事・秀逸な記事 の本文からリンクされている言葉
+  if (wcfg.goodArticles?.perRun > 0) {
+    try {
+      cache.wikiLists ??= {};
+      const stale = !cache.wikiLists.t || Date.now() - cache.wikiLists.t > 7 * 86400000;
+      if (stale) {
+        const titles = [];
+        for (const cat of wcfg.goodArticles.categories) titles.push(...await categoryTitles(cat));
+        cache.wikiLists = { t: Date.now(), good: [...new Set(titles)] };
+      }
+      if (!(cache.wikiLists.good ?? []).length) console.warn("  Wikipedia/良質な記事: カテゴリから記事が見つかりません（feeds.json のカテゴリ名を確認してください）");
+      const chosen = pick(cache.wikiLists.good ?? [], wcfg.goodArticles.perRun);
+      for (const art of chosen) {
+        const d = await wikiApi({ action: "query", prop: "links", titles: art, plnamespace: "0", pllimit: "max" });
+        const links = (d.query?.pages?.[0]?.links ?? []).map(l => l.title).filter(t => !/^(\d|一覧|.*一覧$)/.test(t));
+        const article = { site: "Wikipedia", label: "良質な記事", title: art, url: wikiArticleUrl(art), date: nowIso };
+        for (const t of pick(links, wcfg.goodArticles.linksPerArticle)) items.push({ word: t, reading: "", article });
+        console.log(`  Wikipedia/良質な記事「${art}」: リンク ${links.length}件から抽出`);
+        await sleep(300);
+      }
+    } catch (e) { console.warn("  Wikipedia/良質な記事: 取得失敗", e.message); }
+  }
+
+  // (2) 新しく作られた記事
+  if (wcfg.newArticles?.limit > 0) {
+    try {
+      const d = await wikiApi({ action: "query", list: "recentchanges", rctype: "new", rcnamespace: "0", rcshow: "!redirect|!bot", rcprop: "title|timestamp", rclimit: String(wcfg.newArticles.limit) });
+      const rc = d.query?.recentchanges ?? [];
+      for (const r of rc) items.push({ word: r.title, reading: "", article: { site: "Wikipedia", label: "新着記事", title: r.title, url: wikiArticleUrl(r.title), date: r.timestamp ?? nowIso } });
+      console.log(`  Wikipedia/新着記事: ${rc.length}件`);
+    } catch (e) { console.warn("  Wikipedia/新着記事: 取得失敗", e.message); }
+  }
+
+  // (3) おまかせ（ランダムな記事）
+  if (wcfg.random?.limit > 0) {
+    try {
+      const d = await wikiApi({ action: "query", list: "random", rnnamespace: "0", rnlimit: String(Math.min(wcfg.random.limit, 50)) });
+      const rs = d.query?.random ?? [];
+      for (const r of rs) items.push({ word: r.title, reading: "", article: { site: "Wikipedia", label: "おまかせ", title: r.title, url: wikiArticleUrl(r.title), date: nowIso } });
+      console.log(`  Wikipedia/おまかせ: ${rs.length}件`);
+    } catch (e) { console.warn("  Wikipedia/おまかせ: 取得失敗", e.message); }
+  }
+  return items;
+}
+
 // ---------- 2. 言葉の候補を抜き出す ----------
 function buildTokenizer() {
   const dicPath = path.join(ROOT, "node_modules/kuromoji/dict");
@@ -234,26 +311,39 @@ async function main() {
   console.log(`記事 ${articles.length}件`);
 
   const tokenizer = await buildTokenizer();
-  const cand = new Map(); // word -> {reading, article}
+  const newsCand = new Map(); // word -> {reading, article}
   for (const a of articles) {
     for (const c of extractCandidates(tokenizer, `${a.title}。${a.desc}`)) {
-      if (!cand.has(c.word)) cand.set(c.word, { reading: c.reading, article: a });
+      if (!newsCand.has(c.word)) newsCand.set(c.word, { reading: c.reading, article: a });
     }
   }
 
-  const byTitle = new Map(store.words.map(w => [w.title, w]));
-  // 既に収録済みの言葉は出典記事だけ更新
-  const todo = [];
-  for (const [word, info] of cand) {
-    const known = store.words.find(w => w.word === word);
-    if (known) { addSource(known, info.article); continue; }
-    const c = cache.checked[word];
-    if (c && now - c.t < RECHECK_DAYS * 86400000) continue;
-    todo.push(word);
+  console.log("Wikipediaを取得中…");
+  const wikiCand = new Map();
+  for (const it of await fetchWikipedia(cfg.wikipedia, cache)) {
+    if (!newsCand.has(it.word) && !wikiCand.has(it.word)) wikiCand.set(it.word, { reading: it.reading, article: it.article });
   }
-  todo.sort((a, b) => b.length - a.length);
-  const lookups = todo.slice(0, MAX_LOOKUPS_PER_RUN);
-  console.log(`候補 ${cand.size}語 / 新しく調べる ${lookups.length}語`);
+
+  const cand = new Map([...newsCand, ...wikiCand]);
+  const byTitle = new Map(store.words.map(w => [w.word, w]));
+  // 既に収録済みの言葉は出典だけ更新し、未調査のものだけWikipediaで確認する
+  const pending = m => {
+    const todo = [];
+    for (const [word, info] of m) {
+      const known = byTitle.get(word);
+      if (known) { addSource(known, info.article); continue; }
+      const c = cache.checked[word];
+      if (c && now - c.t < RECHECK_DAYS * 86400000) continue;
+      todo.push(word);
+    }
+    return todo;
+  };
+  const newsTodo = pending(newsCand).sort((a, b) => b.length - a.length);
+  const wikiTodo = pending(wikiCand);
+  // ニュース由来を優先し、残りの枠をWikipedia由来に回す
+  const newsPart = newsTodo.slice(0, Math.floor(MAX_LOOKUPS_PER_RUN * 0.6));
+  const lookups = newsPart.concat(wikiTodo).slice(0, MAX_LOOKUPS_PER_RUN);
+  console.log(`候補 ニュース${newsCand.size}語・Wikipedia${wikiCand.size}語 / 新しく調べる ${lookups.length}語`);
 
   let added = 0;
   for (let i = 0; i < lookups.length; i += 20) {
@@ -291,10 +381,10 @@ async function main() {
   for (const [k, v] of Object.entries(cache.checked)) if (now - v.t > RECHECK_DAYS * 86400000) delete cache.checked[k];
 
   store.updatedAt = new Date(now).toISOString();
-  store.feeds = [...new Set(cfg.feeds.map(f => f.site))];
+  store.feeds = [...new Set(cfg.feeds.map(f => f.site))].concat(cfg.wikipedia?.enabled === false ? [] : ["Wikipedia"]);
   store.license = {
     meaning: "各語の meaning はウィキペディア日本語版の記事冒頭を抜粋したもので、CC BY-SA 4.0 に従います（各語の wiki が出典）。",
-    sources: "sources の見出し（title）とリンク先の記事の著作権は各報道機関に帰属します。"
+    sources: "site が Wikipedia の出典は CC BY-SA 4.0 です。それ以外の sources の見出し（title）とリンク先の記事の著作権は各報道機関に帰属します。"
   };
   await fs.mkdir(path.dirname(OUT), { recursive: true });
   await fs.writeFile(OUT, JSON.stringify(store));

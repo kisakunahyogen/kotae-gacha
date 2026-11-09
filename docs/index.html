@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>答えガチャ</title>
-<meta name="description" content="ニュースから拾った難しめの言葉を10個ずつ引ける、クイズの答え探し用ツール">
+<meta name="description" content="ニュースやWikipediaから拾った難しめの言葉を10個ずつ引ける、クイズの答え探し用ツール">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -127,7 +127,7 @@ select.sel{font:inherit;font-weight:700;font-size:.88rem;border:2px solid var(--
 <div class="wrap">
   <aside class="side">
     <h1>答えガチャ</h1>
-    <p class="lede">ニュースに出てきた言葉から、クイズの答えになりそうなものを10個ずつ。</p>
+    <p class="lede">ニュースやWikipediaで見つけた言葉から、クイズの答えになりそうなものを10個ずつ。</p>
 
     <div class="machine">
       <div class="dome" aria-hidden="true">
@@ -184,7 +184,7 @@ select.sel{font:inherit;font-weight:700;font-size:.88rem;border:2px solid var(--
 
     <footer class="foot">
       <p>言葉の説明は<a href="https://ja.wikipedia.org/" target="_blank" rel="noopener noreferrer">ウィキペディア日本語版</a>の記事冒頭を自動で抜き出したもので、<a href="https://creativecommons.org/licenses/by-sa/4.0/deed.ja" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a> に従います。各言葉の詳細に元の記事へのリンクがあります。</p>
-      <p>ニュースの見出しとリンク先の記事の著作権は、各報道機関に帰属します。このサイトは見出しから言葉を拾うだけで、記事本文は保存していません。</p>
+      <p>言葉はニュースの見出しと、ウィキペディアの良質な記事・新着記事などから拾っています。ニュースの見出しとリンク先の記事の著作権は各報道機関に帰属し、このサイトは記事本文を保存していません。</p>
       <p>キープした言葉はお使いのブラウザの中だけに保存され、外部には送信されません。</p>
     </footer>
   </main>
@@ -318,7 +318,7 @@ function renderDetail(w){
   const su = s && safeUrl(s.url);
   if(su){
     const box=el("div","src-card");
-    box.append(el("h3",null,`この言葉を拾った記事（${s.site}${s.label?"・"+s.label:""}）`));
+    box.append(el("h3",null, s.site==="Wikipedia" && s.title===w.word ? `この言葉を見つけた場所（Wikipedia・${s.label||""}）` : `この言葉を拾った記事（${s.site}${s.label?"・"+s.label:""}）`));
     const a=el("a","article",s.title||su); a.href=su; a.target="_blank"; a.rel="noopener noreferrer";
     box.append(a, el("span","when",fmtDate(s.date)));
     detail.append(box);

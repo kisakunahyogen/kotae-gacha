@@ -7,7 +7,7 @@
 | `word` | ウィキペディア日本語版の記事名 | 記事名そのもの |
 | `meaning` | ウィキペディア日本語版の記事冒頭の抜粋 | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.ja)。出典は各語の `wiki` の記事で、著作者はその記事の履歴に記載された執筆者です |
 | `views` / `level` | Wikimedia の閲覧数統計をもとにした値 | Wikimedia の統計データに基づく |
-| `sources[].title` / `sources[].url` | 言葉を拾ったニュースの見出しとリンク | 見出しとリンク先記事の著作権は各報道機関に帰属します |
+| `sources[].title` / `sources[].url` | 言葉を拾った場所（ニュースの見出し、またはウィキペディアの記事名）とリンク | `site` が Wikipedia のものは CC BY-SA 4.0。それ以外は見出しとリンク先記事の著作権が各報道機関に帰属します |
 | `reading` | 形態素解析（kuromoji / IPADIC）による推定読み | 自動推定のため誤りを含むことがあります |
 
 `meaning` を再利用する場合は、CC BY-SA 4.0 の条件（出典の表示・同じライセンスでの公開）に従ってください。

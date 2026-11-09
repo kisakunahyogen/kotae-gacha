@@ -70,5 +70,26 @@
         "news.yahoo.co.jp"
       ]
     }
-  ]
+  ],
+  "wikipedia": {
+    "_note": "Wikipedia（日本語版）から言葉を拾う設定です。Wikimedia公式のAPIを使います。enabled を false にすると止まります。",
+    "enabled": true,
+    "goodArticles": {
+      "_note": "良質な記事・秀逸な記事をランダムに選び、本文中でリンクされている言葉を拾います",
+      "categories": [
+        "Category:秀逸な記事",
+        "Category:良質な記事"
+      ],
+      "perRun": 3,
+      "linksPerArticle": 40
+    },
+    "newArticles": {
+      "_note": "新しく作られた記事",
+      "limit": 50
+    },
+    "random": {
+      "_note": "ランダムに選ばれた記事",
+      "limit": 20
+    }
+  }
 }
