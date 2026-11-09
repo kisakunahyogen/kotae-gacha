@@ -1,0 +1,35 @@
+name: crawl
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: crawl
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node crawler/crawl.mjs
+        env:
+          CRAWLER_CONTACT: https://github.com/${{ github.repository }}
+      - name: Commit
+        run: |
+          git config user.name "kotae-gacha-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/words.json crawler/cache.json
+          git diff --cached --quiet || git commit -m "update words $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
