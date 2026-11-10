@@ -29,6 +29,28 @@ function levelOf(views) {
   return 4;                      // 激ムズ
 }
 
+// ---------- ふつうすぎる言葉・偏りを減らすための判定 ----------
+// 日本語でよく使われる度合い（Zipf値）。wordfreq のデータから作った表（crawler/wordfreq-ja.json）。
+// 表に無い言葉は「めったに使われない」とみなします。
+let ZIPF = {};
+const zipfOf = w => ZIPF[w] ?? null;
+function levelOfZipf(z) {
+  if (z == null) return null;
+  if (z >= 3.0) return 2;
+  if (z >= 2.4) return 3;
+  return 4;
+}
+// 閲覧数とよく使われる度合いの両方を見て難しさを決める（両方わかるときは平均）
+function combinedLevel(views, zipf) {
+  const a = levelOf(views), b = levelOfZipf(zipf);
+  return b == null ? a : Math.round((a + b) / 2);
+}
+const DEFAULT_QUALITY = {
+  commonZipf: 3.6, minArticleBytes: 4000, minViews: 3,
+  maxPerCategory: 4, maxPerSourcePerRun: 4,
+  blockCategoryPatterns: ["存命人物", "曖昧さ回避"]
+};
+
 const STOP = new Set(`日本 政府 東京 大阪 今年 去年 来年 今月 先月 午前 午後 今回 関係 発表 会見 記者 首相 大臣 会社 企業 事件 事故 問題 情報 対応 状況 影響 可能 必要 予定 調査 結果 方針 理由 一部 全国 地域 世界 海外 国内 市場 価格 経済 政治 社会 文化 科学 技術 ニュース 番組 動画 写真 映像 記事 速報 最新 公開 開始 終了 実施 検討 確認 発生 増加 減少 年度 時間 時代 人気 話題 注目`.split(/\s+/));
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -202,7 +224,8 @@ async function fetchWikipedia(wcfg, cache) {
       console.log(`  Wikipedia/おまかせ: ${rs.length}件`);
     } catch (e) { console.warn("  Wikipedia/おまかせ: 取得失敗", e.message); }
   }
-  return items;
+  // 年号・数字入り・一覧・年表のような記事名は除く
+  return items.filter(it => !/[0-9０-９]/.test(it.word) && !/一覧|年表|の歴史$|の戦績$/.test(it.word));
 }
 
 // ---------- 2. 言葉の候補を抜き出す ----------
@@ -261,28 +284,42 @@ export function extractCandidates(tokenizer, text) {
 
 // ---------- 3. Wikipedia で確認 ----------
 async function wikiLookup(titles) {
-  const params = new URLSearchParams({
+  // 記事の有無・冒頭文・記事の長さ・カテゴリ（隠しカテゴリ以外）をまとめて取得する
+  const base = {
     action: "query", format: "json", formatversion: "2", redirects: "1",
-    prop: "extracts|pageprops|categories", exintro: "1", explaintext: "1", exsentences: "2", exlimit: "20",
-    ppprop: "disambiguation", clcategories: "Category:存命人物|Category:曖昧さ回避", cllimit: "max",
+    prop: "extracts|pageprops|categories|info", exintro: "1", explaintext: "1", exsentences: "2", exlimit: "20",
+    ppprop: "disambiguation", clshow: "!hidden", cllimit: "max",
     titles: titles.join("|"), origin: "*"
-  });
-  const data = await get("https://ja.wikipedia.org/w/api.php?" + params, { json: true });
-  const q = data.query ?? {};
+  };
   const map = new Map(titles.map(t => [t, t]));
-  for (const n of q.normalized ?? []) for (const [k, v] of map) if (v === n.from) map.set(k, n.to);
-  for (const r of q.redirects ?? []) for (const [k, v] of map) if (v === r.from) map.set(k, r.to);
-  const pages = new Map((q.pages ?? []).map(p => [p.title, p]));
+  const pages = new Map();
+  let cont = {};
+  for (let round = 0; round < 8; round++) {
+    const data = await get("https://ja.wikipedia.org/w/api.php?" + new URLSearchParams({ ...base, ...cont }), { json: true });
+    const q = data.query ?? {};
+    if (round === 0) {
+      for (const n of q.normalized ?? []) for (const [k, v] of map) if (v === n.from) map.set(k, n.to);
+      for (const r of q.redirects ?? []) for (const [k, v] of map) if (v === r.from) map.set(k, r.to);
+    }
+    for (const p of q.pages ?? []) {
+      const cur = pages.get(p.title) ?? { ...p, categories: [] };
+      cur.categories = cur.categories.concat((p.categories ?? []).map(c => c.title.replace(/^Category:/, "")));
+      if (p.extract && !cur.extract) cur.extract = p.extract;
+      pages.set(p.title, cur);
+    }
+    if (!data.continue) break;
+    cont = data.continue;
+    await sleep(200);
+  }
   const result = new Map();
   for (const [orig, final] of map) {
     const p = pages.get(final);
-    if (!p || p.missing || p.invalid) { result.set(orig, null); continue; }
-    if (p.pageprops && "disambiguation" in p.pageprops) { result.set(orig, null); continue; }
-    if ((p.categories ?? []).length) { result.set(orig, null); continue; } // 存命人物・曖昧さ回避を除外
+    if (!p || p.missing || p.invalid) { result.set(orig, { reject: "記事なし" }); continue; }
+    if (p.pageprops && "disambiguation" in p.pageprops) { result.set(orig, { reject: "曖昧さ回避" }); continue; }
     let extract = (p.extract ?? "").replace(/\s+/g, " ").trim();
-    if (extract.length < 15) { result.set(orig, null); continue; }
+    if (extract.length < 15) { result.set(orig, { reject: "説明が短い" }); continue; }
     if (extract.length > 220) extract = extract.slice(0, 218) + "…";
-    result.set(orig, { title: p.title, extract });
+    result.set(orig, { title: p.title, extract, length: p.length ?? 0, categories: [...new Set(p.categories)] });
   }
   return result;
 }
@@ -305,6 +342,16 @@ async function main() {
   const cache = await readJson(CACHE, { checked: {} });
   const store = await readJson(OUT, { updatedAt: null, words: [] });
   const now = Date.now();
+  const Q = { ...DEFAULT_QUALITY, ...(cfg.quality ?? {}) };
+  const blockRe = Q.blockCategoryPatterns.map(p => new RegExp(p));
+  ZIPF = (await readJson(path.join(ROOT, "crawler/wordfreq-ja.json"), { zipf: {} })).zipf;
+
+  // 選び方のルールを変えたときは、過去の言葉と調査済みの記録を作り直す
+  const FILTER_VERSION = 2;
+  if (store.filterVersion !== FILTER_VERSION) {
+    console.log("選び方のルールが更新されたので、収録語を作り直します");
+    store.words = []; cache.checked = {}; store.filterVersion = FILTER_VERSION;
+  }
 
   console.log("RSSを取得中…");
   const articles = await fetchFeeds(cfg);
@@ -334,6 +381,8 @@ async function main() {
       if (known) { addSource(known, info.article); continue; }
       const c = cache.checked[word];
       if (c && now - c.t < RECHECK_DAYS * 86400000) continue;
+      const z = zipfOf(word);
+      if (z != null && z >= Q.commonZipf) { cache.checked[word] = { t: now, ok: false, why: "ふつうすぎる" }; continue; }
       todo.push(word);
     }
     return todo;
@@ -345,6 +394,13 @@ async function main() {
   const lookups = newsPart.concat(wikiTodo).slice(0, MAX_LOOKUPS_PER_RUN);
   console.log(`候補 ニュース${newsCand.size}語・Wikipedia${wikiCand.size}語 / 新しく調べる ${lookups.length}語`);
 
+  // カテゴリごとの収録数（同じカテゴリの言葉ばかりにならないように）
+  const catCount = new Map();
+  for (const w of store.words) for (const c of w.cats ?? []) catCount.set(c, (catCount.get(c) ?? 0) + 1);
+  const perSource = new Map();
+  const why = {};
+  const reject = (word, reason) => { cache.checked[word] = { t: now, ok: false, why: reason }; why[reason] = (why[reason] ?? 0) + 1; };
+
   let added = 0;
   for (let i = 0; i < lookups.length; i += 20) {
     const batch = lookups.slice(i, i + 20);
@@ -352,26 +408,43 @@ async function main() {
     try { res = await wikiLookup(batch); } catch (e) { console.warn("  Wikipedia取得失敗:", e.message); await sleep(3000); continue; }
     for (const word of batch) {
       const hit = res.get(word);
-      cache.checked[word] = { t: now, ok: !!hit };
-      if (!hit) continue;
       const info = cand.get(word);
-      if (byTitle.has(hit.title)) { addSource(byTitle.get(hit.title), info.article); continue; }
+      if (!hit || hit.reject) { reject(word, hit?.reject ?? "記事なし"); continue; }
+      if (byTitle.has(hit.title)) { cache.checked[word] = { t: now, ok: true }; addSource(byTitle.get(hit.title), info.article); continue; }
+
+      const z = zipfOf(hit.title);
+      if (z != null && z >= Q.commonZipf) { reject(word, "ふつうすぎる"); continue; }
+      if (hit.categories.some(c => blockRe.some(r => r.test(c)))) { reject(word, "除外カテゴリ"); continue; }
+      if (hit.length < Q.minArticleBytes) { reject(word, "記事が短い"); continue; }
+      const crowded = hit.categories.find(c => (catCount.get(c) ?? 0) >= Q.maxPerCategory);
+      if (crowded) { reject(word, "同じカテゴリが多い"); continue; }
+      const srcKey = info.article.url;
+      if ((perSource.get(srcKey) ?? 0) >= Q.maxPerSourcePerRun) { why["同じ記事から多い"] = (why["同じ記事から多い"] ?? 0) + 1; continue; } // 次回また候補になれるよう記録しない
+
       const views = await pageviews(hit.title);
       await sleep(150);
+      if (views < Q.minViews) { reject(word, "ほとんど読まれていない"); continue; }
+
+      cache.checked[word] = { t: now, ok: true };
+      const cats = hit.categories.slice(0, 10);
       const entry = {
         word: hit.title,
         reading: /[\u4e00-\u9fff]/.test(hit.title) && word === hit.title ? info.reading : "",
         meaning: hit.extract,
         wiki: "https://ja.wikipedia.org/wiki/" + encodeURIComponent(hit.title.replace(/ /g, "_")),
-        views, level: levelOf(views),
+        views, zipf: z, level: combinedLevel(views, z),
+        cats,
         addedAt: new Date(now).toISOString(),
         sources: []
       };
       addSource(entry, info.article);
       store.words.push(entry); byTitle.set(hit.title, entry); added++;
+      for (const c of cats) catCount.set(c, (catCount.get(c) ?? 0) + 1);
+      perSource.set(srcKey, (perSource.get(srcKey) ?? 0) + 1);
     }
     await sleep(500);
   }
+  console.log("除外した理由:", Object.entries(why).map(([k, v]) => `${k} ${v}`).join(" / ") || "なし");
 
   // 古いもの・キャッシュの整理
   const cutoff = now - KEEP_DAYS * 86400000;

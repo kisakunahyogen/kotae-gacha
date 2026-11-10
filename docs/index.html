@@ -118,6 +118,8 @@ h1{font-weight:900;font-size:2.4rem;line-height:1.1;margin:0 0 4px;letter-spacin
 .attrib a{color:inherit}
 .stars{letter-spacing:.1em}
 select.sel{font:inherit;font-weight:700;font-size:.88rem;border:2px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:4px 12px}
+.cap.gone{opacity:.35}
+.cap.gone .w{text-decoration:line-through}
 .foot{margin-top:40px;padding-top:16px;border-top:2px solid var(--line);font-size:.8rem;color:var(--muted);max-width:44em}
 .foot p{margin:0 0 6px}
 .foot a{color:inherit}
@@ -145,7 +147,7 @@ select.sel{font:inherit;font-weight:700;font-size:.88rem;border:2px solid var(--
     <div class="group">
       <h2 id="g-level">難しさ</h2>
       <div class="chips" id="levels" role="group" aria-labelledby="g-level"></div>
-      <p class="note">Wikipediaで読まれている回数が少ない言葉ほど「難」寄りになります。</p>
+      <p class="note">ふだんの日本語であまり使われず、Wikipediaでも読まれていない言葉ほど「難」寄りになります。合わない言葉は詳細の「いらない」で出なくできます。</p>
     </div>
 
     <div class="group">
@@ -180,6 +182,7 @@ select.sel{font:inherit;font-weight:700;font-size:.88rem;border:2px solid var(--
       </div>
       <ul id="keptList"></ul>
       <p class="none" id="keptNone">気になる言葉は詳細から「キープ」すると、このブラウザに残ります。</p>
+      <p class="none" id="hiddenNote" hidden>「いらない」にした言葉 <span id="hiddenCount">0</span>語はガチャに出しません。<button class="small-btn" type="button" id="unhide">すべて元に戻す</button></p>
     </section>
 
     <footer class="foot">
@@ -206,6 +209,7 @@ const state = { all:[], levels:new Set([2,3,4]), days:"7", site:"", current:[], 
 function lsGet(k,f){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } }
 function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 let kept = lsGet("kotae-gacha-kept", []);
+let hidden = new Set(lsGet("kotae-gacha-hidden", []));
 
 function safeUrl(u, hosts){
   try{ const x=new URL(u); if(x.protocol!=="https:"&&x.protocol!=="http:") return null;
@@ -238,7 +242,7 @@ function pool(){
   const now=Date.now(), lim = +state.days ? +state.days*86400000 : Infinity;
   return state.all.filter(w=>{
     const s=w.sources?.[0]; const t=new Date(s?.date||w.addedAt).getTime();
-    return state.levels.has(w.level) && (now-t)<=lim && (!state.site || w.sources?.some(x=>x.site===state.site));
+    return !hidden.has(w.word) && state.levels.has(w.level) && (now-t)<=lim && (!state.site || w.sources?.some(x=>x.site===state.site));
   });
 }
 function updateCount(){
@@ -329,7 +333,13 @@ function renderDetail(w){
   const k=el("button","keep-btn"); k.type="button";
   const sync=()=>{ const on=isKept(w); k.setAttribute("aria-pressed",String(on)); k.textContent=on?"キープ中":"キープする"; };
   k.onclick=()=>{ if(isKept(w)) kept=kept.filter(x=>x.word!==w.word); else kept.push(w); lsSet("kotae-gacha-kept",kept); sync(); renderKept(); };
-  sync(); links.append(k); detail.append(links);
+  sync(); links.append(k);
+  const hb=el("button","keep-btn"); hb.type="button";
+  const hsync=()=>{ const on=hidden.has(w.word); hb.setAttribute("aria-pressed",String(on)); hb.textContent=on?"非表示中（元に戻す）":"いらない"; hb.title="この言葉を今後のガチャに出さない"; };
+  hb.onclick=()=>{ if(hidden.has(w.word)) hidden.delete(w.word); else hidden.add(w.word); lsSet("kotae-gacha-hidden",[...hidden]); hsync(); renderHidden(); updateCount();
+    const i=state.current.findIndex(x=>x.word===w.word); if(i>=0){ const c=tray.querySelectorAll(".cap")[i]; if(c) c.classList.toggle("gone", hidden.has(w.word)); } };
+  hsync(); links.append(hb);
+  detail.append(links);
 }
 
 /* ---------- kept ---------- */
@@ -344,6 +354,12 @@ function renderKept(){
     li.append(b); ul.append(li);
   });
 }
+function renderHidden(){
+  const n=hidden.size, p=$("#hiddenNote");
+  p.hidden = n===0;
+  $("#hiddenCount").textContent = n;
+}
+$("#unhide").onclick=()=>{ hidden=new Set(); lsSet("kotae-gacha-hidden",[]); renderHidden(); updateCount(); tray.querySelectorAll(".cap.gone").forEach(c=>c.classList.remove("gone")); if(state.openIdx>=0) renderDetail(state.current[state.openIdx]); };
 $("#copyKept").onclick=async()=>{
   const text=kept.map(w=>`${w.word}${w.reading?`（${w.reading}）`:""}\t${w.meaning}\t${w.wiki||""}`).join("\n");
   try{ await navigator.clipboard.writeText(text); $("#copyKept").textContent="コピーしました"; }catch(e){ $("#copyKept").textContent="コピーできませんでした"; }
@@ -368,7 +384,7 @@ async function load(){
     statusEl.textContent="言葉のデータ（words.json）を読み込めませんでした。ページを再読み込みしてください。";
   }
 }
-renderChips(); renderBalls(); renderKept(); load();
+renderChips(); renderBalls(); renderKept(); renderHidden(); load();
 </script>
 </body>
 </html>

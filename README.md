@@ -58,6 +58,24 @@ GitHub の右上のアイコン → **Settings → Password and authentication**
 
 `crawler/feeds.json` を編集します。`allowedHosts` に書いたドメインの記事だけがリンクとして採用され、それ以外のリンクは捨てられます。robots.txt で取得が禁止されているフィードは自動で読み飛ばします。ただし、利用規約までは自動で確認できません。サイトを追加するときは、そのサイトの利用規約でRSSの自動取得が認められているか、自分で確認してください。
 
+## ふつうすぎる言葉・どうでもいい言葉・偏りを減らす仕組み
+
+Wikipediaに記事がある言葉の中から、次の5つの関門を通ったものだけを収録します。設定は `crawler/feeds.json` の `quality` で変えられます。
+
+| 関門 | 何を落とすか | 設定 |
+|---|---|---|
+| ふつうすぎる | 日本語でよく使われる言葉（条約、離婚、ウクライナなど）。[wordfreq](https://github.com/rspeer/wordfreq) の頻度データ（`crawler/wordfreq-ja.json`）で判定 | `commonZipf`（初期値3.6。下げるほど厳しい） |
+| 記事が短い | Wikipediaの記事がごく短い言葉（知名度が低く、問題にしにくい） | `minArticleBytes`（初期値4000） |
+| ほとんど読まれていない | 1日の閲覧数がごく少ない言葉 | `minViews`（初期値3） |
+| 除外カテゴリ | 市町村・駅・スポーツ選手・楽曲など、数が多く偏りの原因になる種類 | `blockCategoryPatterns` |
+| 偏り防止 | 同じカテゴリ（例：ドイツの都市）の言葉は全体で4語まで。1回の実行で同じ記事から拾うのも4語まで | `maxPerCategory` / `maxPerSourcePerRun` |
+
+Actions の実行ログの最後に「除外した理由: ふつうすぎる 52 / 記事が短い 31 …」のような内訳が出るので、調整の目安にしてください。
+
+このルールを入れた最初の実行では、それまでの収録語をいったん空にして作り直します。数回実行するうちに言葉が戻ってきます。
+
+サイト上でも、合わない言葉は詳細の「いらない」を押すと、そのブラウザでは出なくなります。
+
 ## Wikipediaから拾う量を変える
 
 `crawler/feeds.json` の `wikipedia` の部分で調整します。
@@ -68,13 +86,14 @@ GitHub の右上のアイコン → **Settings → Password and authentication**
 | `goodArticles.perRun` | 1回の実行で選ぶ良質な記事・秀逸な記事の数（初期値3） |
 | `goodArticles.linksPerArticle` | 選んだ記事1本あたりに拾うリンク数（初期値40） |
 | `newArticles.limit` | 新着記事から拾う数（初期値50） |
-| `random.limit` | ランダムな記事から拾う数（初期値20、最大50） |
+| `random.limit` | ランダムな記事から拾う数（初期値0＝オフ、最大50）。マニアックすぎる言葉が増えやすいため |
 
 コトバンクは巡回対象にしていません。公開されたAPIやRSSがなく、掲載されている解説は各出版社の辞書の著作物だからです。各言葉の詳細にあるリンクから、コトバンクで調べられるようにしています。
 
 ## 出典とライセンス
 
 - **プログラム**：MIT License（`LICENSE`）
+- **頻度データ（crawler/wordfreq-ja.json）**：[wordfreq](https://github.com/rspeer/wordfreq) のデータから作成（CC BY-SA 4.0）
 - **言葉の説明（meaning）**：ウィキペディア日本語版の記事冒頭の抜粋で、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.ja) に従います。サイトのフッターと各言葉の詳細に、出典とリンクを表示しています。
 - **ニュースの見出しとリンク先の記事**：著作権は各報道機関に帰属します。記事本文は保存していません。
 - 詳しくは `docs/DATA-LICENSE.md` を参照してください。
